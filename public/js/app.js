@@ -12,6 +12,8 @@ import {
 const estado = {
   clienteSeleccionadoId: null,
   clienteEnEdicionId: null,
+  busquedaClientes: '',
+  etapaSeleccionada: '',
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -30,13 +32,23 @@ function escapar(texto) {
 // ---------- Clientes ----------
 
 function renderizarClientes() {
-  const clientes = almacen.listarClientes();
+  const todosLosClientes = almacen.listarClientes();
+  const busqueda = estado.busquedaClientes.trim().toLowerCase();
+
+  const clientes = todosLosClientes.filter((cliente) => {
+    const nombre = cliente.nombre.toLowerCase();
+    const contacto = cliente.contacto.toLowerCase();
+
+    return nombre.includes(busqueda) || contacto.includes(busqueda);
+  })
   const oportunidades = almacen.listarOportunidades();
   const lista = $('#lista-clientes');
   $('#contador-clientes').textContent = `${clientes.length} cliente${clientes.length === 1 ? '' : 's'}`;
 
   if (clientes.length === 0) {
-    lista.innerHTML = '<li class="vacio">Aún no hay clientes. Registra el primero con el formulario.</li>';
+    lista.innerHTML = busqueda
+    ? '<li class="vacio">No se encontraron clientes.</li>'
+    : '<li class="vacio">Aún no hay clientes. Registra el primero con el formulario.</li>';
     return;
   }
 
@@ -111,12 +123,17 @@ function renderizarDetalle() {
     return;
   }
 
-  const oportunidades = almacen
+  const oportunidadesCliente = almacen
     .listarOportunidades()
     .filter((o) => o.clienteId === cliente.id)
     .sort((a, b) => b.creadoEn.localeCompare(a.creadoEn));
 
-  const totalAbierto = oportunidades
+  const oportunidades = estado.etapaSeleccionada
+    ? oportunidadesCliente.filter(
+      (o) => o.etapa === estado.etapaSeleccionada,
+    ): oportunidadesCliente;
+
+  const totalAbierto = oportunidadesCliente
     .filter((o) => !['Ganada', 'Perdida'].includes(o.etapa))
     .reduce((suma, o) => suma + o.monto, 0);
 
@@ -151,6 +168,14 @@ function renderizarDetalle() {
     </header>
 
     <p class="resumen">Pipeline abierto: <strong>${formatoMoneda.format(totalAbierto)}</strong></p>
+    <label for="filtro-etapa" class="filtro-etapa">Filtrar por etapa
+      <select id="filtro-etapa">
+        <option value="">Todas</option>
+        ${ETAPAS.map(
+          (etapa) => `<option value="${etapa}" ${etapa === estado.etapaSeleccionada ? 'selected' : ''}>${etapa}</option>`
+        ).join('')}
+      </select>
+    </label>
 
     <table class="oportunidades">
       <thead>
@@ -168,11 +193,16 @@ function renderizarDetalle() {
       <ul class="errores" hidden></ul>
     </form>`;
 
+  $('#filtro-etapa').addEventListener('change', (evento) => {
+    estado.etapaSeleccionada = evento.target.value;
+    renderizarDetalle();
+  });
   $('#editar-cliente').addEventListener('click', () => iniciarEdicionCliente(cliente));
   $('#eliminar-cliente').addEventListener('click', () => {
     if (confirm(`¿Eliminar a "${cliente.nombre}" y todas sus oportunidades?`)) {
       almacen.eliminarCliente(cliente.id);
       estado.clienteSeleccionadoId = null;
+      estado.etapaSeleccionada = '';
       renderizar();
     }
   });
@@ -230,11 +260,16 @@ function iniciar() {
 
   $('#form-cliente').addEventListener('submit', manejarFormularioCliente);
   $('#cancelar-edicion').addEventListener('click', cancelarEdicionCliente);
+  $('#buscar-clientes').addEventListener('input', (evento) => {
+    estado.busquedaClientes = evento.target.value;
+    renderizarClientes();
+  });
 
   $('#lista-clientes').addEventListener('click', (evento) => {
     const boton = evento.target.closest('.cliente');
     if (!boton) return;
     estado.clienteSeleccionadoId = boton.dataset.id;
+    estado.etapaSeleccionada = '';
     renderizar();
   });
 
@@ -245,6 +280,7 @@ function iniciar() {
     if (confirm('Esto borra todos los datos guardados en este navegador y vuelve a cargar los de ejemplo. ¿Continuar?')) {
       almacen.reiniciar();
       estado.clienteSeleccionadoId = null;
+      estado.etapaSeleccionada = '';
       cancelarEdicionCliente();
       sembrarDatosIniciales();
       renderizar();
